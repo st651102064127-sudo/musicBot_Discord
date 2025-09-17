@@ -559,6 +559,6 @@ class MusicBot {
 
 // การใช้งาน
 const bot = new MusicBot();
-bot.start('Discord_Token');
+client.login(process.env.DISCORD_TOKEN);
 
 module.exports = MusicBot;
