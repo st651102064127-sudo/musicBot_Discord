@@ -3,6 +3,7 @@ const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerSta
 const ytdl = require('@distube/ytdl-core');
 const ytSearch = require('yt-search');
 const { spawn } = require('child_process');
+const  dotenv  = require('dotenv');
 // Try to use ffmpeg-static, fallback to system ffmpeg
 let ffmpegPath;
 try {
@@ -11,6 +12,7 @@ try {
     console.log('ffmpeg-static not found, using system ffmpeg');
     ffmpegPath = 'ffmpeg'; // ใช้ ffmpeg ที่ติดตั้งในระบบ
 }
+dotenv.config();
 
 class MusicBot {
     constructor() {
@@ -26,6 +28,7 @@ class MusicBot {
         this.queues = new Map(); // Guild ID -> Queue
         this.players = new Map(); // Guild ID -> Audio Player
         this.connections = new Map(); // Guild ID -> Voice Connection
+        this.searchMessages = new Map(); // Guild ID -> Search Message
 
         this.setupEvents();
     }
@@ -70,10 +73,21 @@ class MusicBot {
             return message.reply('❌ คุณต้องเข้า Voice Channel ก่อน!');
         }
 
-        try {
-            // แสดงสถานะการค้นหา
-            const searchMessage = await message.reply('🔍 กำลังค้นหาเพลง...');
+        // ส่งข้อความตอบกลับทันทีเพื่อลดความรู้สึกสะดุด
+        const searchMessage = await message.reply('🔍 กำลังค้นหาเพลง...');
+        
+        // บันทึกข้อความค้นหาเพื่อใช้ในการอัปเดตภายหลัง
+        this.searchMessages.set(message.guild.id, searchMessage);
 
+        // เริ่มการค้นหาแบบไม่บล็อกการทำงาน
+        this.performSearch(message, query, searchMessage).catch(error => {
+            console.error('Error in search:', error);
+            searchMessage.edit('❌ เกิดข้อผิดพลาดในการค้นหาเพลง!');
+        });
+    }
+
+    async performSearch(message, query, searchMessage) {
+        try {
             const searchResults = await ytSearch(query);
             const videos = searchResults.videos.slice(0, 5);
 
@@ -112,7 +126,7 @@ class MusicBot {
             if (!this.queues.has(message.guild.id)) {
                 this.queues.set(message.guild.id, {
                     songs: [],
-                    voiceChannel: voiceChannel,
+                    voiceChannel: message.member.voice.channel,
                     textChannel: message.channel,
                     searchResults: videos,
                     nowPlaying: null
@@ -122,10 +136,12 @@ class MusicBot {
             }
 
             await searchMessage.edit({ content: null, embeds: [embed], components: [row] });
+            this.searchMessages.delete(message.guild.id);
 
         } catch (error) {
             console.error('Error searching:', error);
-            message.reply('❌ เกิดข้อผิดพลาดในการค้นหาเพลง!');
+            await searchMessage.edit('❌ เกิดข้อผิดพลาดในการค้นหาเพลง!');
+            this.searchMessages.delete(message.guild.id);
         }
     }
 
@@ -559,6 +575,6 @@ class MusicBot {
 
 // การใช้งาน
 const bot = new MusicBot();
-client.login(process.env.DISCORD_TOKEN);
+bot.start(process.env.DISCORD_TOKEN);
 
 module.exports = MusicBot;
